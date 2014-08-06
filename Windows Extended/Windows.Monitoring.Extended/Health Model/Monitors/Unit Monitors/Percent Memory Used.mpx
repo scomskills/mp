@@ -1,0 +1,46 @@
+﻿<ManagementPackFragment SchemaVersion="2.0" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Monitoring>
+    <Monitors>
+      <UnitMonitor ID="Windows.Monitoring.Extended.Monitor.PercentMemoryUsed" Accessibility="Public" Enabled="true" ParentMonitorID="Health!System.Health.PerformanceState" Priority="Normal" Target="Windows!Microsoft.Windows.Server.OperatingSystem" TypeID="Windows.Monitoring.Extended.MonitorType.PercentMemoryUsed">
+        <Category>PerformanceHealth</Category>
+        <AlertSettings AlertMessage="Windows.Monitoring.Extended.AlertMessage.PercentMemoryUsed">
+          <AlertOnState>Error</AlertOnState>
+          <AutoResolve>true</AutoResolve>
+          <AlertPriority>Normal</AlertPriority>
+          <AlertSeverity>Error</AlertSeverity>
+          <AlertParameters>
+            <AlertParameter1>$Data/Context/Value$</AlertParameter1>
+          </AlertParameters>
+        </AlertSettings>
+        <OperationalStates>
+          <OperationalState ID="OpState_Healthy" HealthState="Success" MonitorTypeStateID="MTS_Under" />
+          <OperationalState ID="OpState_Unhealty" HealthState="Error" MonitorTypeStateID="MTS_Over" />
+        </OperationalStates>
+        <Configuration>
+          <PhysicalMemory>$Target/Property[Type="Windows!Microsoft.Windows.OperatingSystem"]/PhysicalMemory$</PhysicalMemory>
+          <IntervalSeconds>900</IntervalSeconds>
+          <Threshold>90</Threshold>
+          <MatchCount>2</MatchCount>
+        </Configuration>
+      </UnitMonitor>
+    </Monitors>
+  </Monitoring>
+  <Presentation>
+    <StringResources>
+      <StringResource ID="Windows.Monitoring.Extended.AlertMessage.PercentMemoryUsed"/>
+    </StringResources>
+  </Presentation>
+  <LanguagePacks>
+    <LanguagePack ID="ENU" IsDefault="true">
+      <DisplayStrings>
+        <DisplayString ElementID="Windows.Monitoring.Extended.Monitor.PercentMemoryUsed">
+          <Name>Windows Percent Memory Used</Name>
+        </DisplayString>
+        <DisplayString ElementID="Windows.Monitoring.Extended.AlertMessage.PercentMemoryUsed">
+          <Name>Windows Memory Over Threshold</Name>
+          <Description>Windows memory is currently at 0: {0}%</Description>
+        </DisplayString>
+      </DisplayStrings>
+    </LanguagePack>
+  </LanguagePacks>
+</ManagementPackFragment>

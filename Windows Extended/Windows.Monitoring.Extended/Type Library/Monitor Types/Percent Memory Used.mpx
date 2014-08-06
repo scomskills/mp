@@ -1,0 +1,72 @@
+﻿<ManagementPackFragment SchemaVersion="2.0" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <TypeDefinitions>
+    <MonitorTypes>
+      <UnitMonitorType ID="Windows.Monitoring.Extended.MonitorType.PercentMemoryUsed" Accessibility="Public">
+        <MonitorTypeStates>
+          <MonitorTypeState ID="MTS_Over" />
+          <MonitorTypeState ID="MTS_Under" />
+        </MonitorTypeStates>
+        <Configuration>
+          <xsd:element minOccurs="1" name="PhysicalMemory" type="xsd:double" />
+          <xsd:element minOccurs="1" name="IntervalSeconds" type="xsd:integer" />
+          <xsd:element minOccurs="1" name="Threshold" type="xsd:double" />
+          <xsd:element minOccurs="1" name="MatchCount" type="xsd:integer" />
+        </Configuration>
+        <OverrideableParameters>
+          <OverrideableParameter ID="IntervalSeconds" Selector="$Config/IntervalSeconds$" ParameterType="int" />
+          <OverrideableParameter ID="Threshold" Selector="$Config/Threshold$" ParameterType="double" />
+          <OverrideableParameter ID="MatchCount" Selector="$Config/MatchCount$" ParameterType="int" />
+        </OverrideableParameters>
+        <MonitorImplementation>
+          <MemberModules>
+            <DataSource ID="Script" TypeID="Windows.Monitoring.Extended.DataSource.PercentMemoryUsed">
+              <PhysicalMemory>$Config/PhysicalMemory$</PhysicalMemory>
+              <IntervalSeconds>$Config/IntervalSeconds$</IntervalSeconds>
+            </DataSource>
+            <ConditionDetection ID="CD_Under" TypeID="System!System.ExpressionFilter">
+              <Expression>
+                <SimpleExpression>
+                  <ValueExpression>
+                    <XPathQuery Type="Double">Value</XPathQuery>
+                  </ValueExpression>
+                  <Operator>Less</Operator>
+                  <ValueExpression>
+                    <Value Type="Double">$Config/Threshold$</Value>
+                  </ValueExpression>
+                </SimpleExpression>
+              </Expression>
+            </ConditionDetection>
+            <ConditionDetection ID="CD_Over" TypeID="System!System.ExpressionFilter">
+              <Expression>
+                <SimpleExpression>
+                  <ValueExpression>
+                    <XPathQuery Type="Double">Value</XPathQuery>
+                  </ValueExpression>
+                  <Operator>GreaterEqual</Operator>
+                  <ValueExpression>
+                    <Value Type="Double">$Config/Threshold$</Value>
+                  </ValueExpression>
+                </SimpleExpression>
+              </Expression>
+              <SuppressionSettings>
+                <MatchCount>$Config/MatchCount$</MatchCount>
+              </SuppressionSettings>
+            </ConditionDetection>
+          </MemberModules>
+          <RegularDetections>
+            <RegularDetection MonitorTypeStateID="MTS_Under">
+              <Node ID="CD_Under">
+                <Node ID="Script" />
+              </Node>
+            </RegularDetection>
+            <RegularDetection MonitorTypeStateID="MTS_Over">
+              <Node ID="CD_Over">
+                <Node ID="Script" />
+              </Node>
+            </RegularDetection>
+          </RegularDetections>
+        </MonitorImplementation>
+      </UnitMonitorType>
+    </MonitorTypes>
+  </TypeDefinitions>
+</ManagementPackFragment>

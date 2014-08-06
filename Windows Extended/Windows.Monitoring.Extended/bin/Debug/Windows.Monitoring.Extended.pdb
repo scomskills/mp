@@ -1,0 +1,6 @@
+Type Library\Module Types\Data Sources\Percent Memory Used.mpx*Windows.Monitoring.Extended.DataSource.PercentMemoryUsed*4*8*DataSourceModuleType
+Type Library\Monitor Types\Percent Memory Used.mpx*Windows.Monitoring.Extended.MonitorType.PercentMemoryUsed*4*8*UnitMonitorType
+Health Model\Monitors\Unit Monitors\Percent Memory Used.mpx*Windows.Monitoring.Extended.Monitor.PercentMemoryUsed*4*8*UnitMonitor
+Health Model\Monitors\Unit Monitors\Percent Memory Used.mpx*Windows.Monitoring.Extended.AlertMessage.PercentMemoryUsed*30*8*StringResource
+Health Model\Monitors\Unit Monitors\Percent Memory Used.mpx*Windows.Monitoring.Extended.Monitor.PercentMemoryUsed*36*10*DisplayString
+Health Model\Monitors\Unit Monitors\Percent Memory Used.mpx*Windows.Monitoring.Extended.AlertMessage.PercentMemoryUsed*39*10*DisplayString

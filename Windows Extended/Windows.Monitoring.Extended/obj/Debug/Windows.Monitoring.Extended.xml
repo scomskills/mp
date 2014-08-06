@@ -1,0 +1,757 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ManagementPack SchemaVersion="2.0" ContentReadable="true" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Manifest>
+    <Identity>
+      <ID>Windows.Monitoring.Extended</ID>
+      <Version>1.0.0.19</Version>
+    </Identity>
+    <Name>Windows.Monitoring.Extended</Name>
+    <References>
+      <Reference Alias="Windows">
+        <ID>Microsoft.Windows.Library</ID>
+        <Version>7.5.8501.0</Version>
+        <PublicKeyToken>31bf3856ad364e35</PublicKeyToken>
+      </Reference>
+      <Reference Alias="Health">
+        <ID>System.Health.Library</ID>
+        <Version>7.0.8432.0</Version>
+        <PublicKeyToken>31bf3856ad364e35</PublicKeyToken>
+      </Reference>
+      <Reference Alias="System">
+        <ID>System.Library</ID>
+        <Version>7.5.8501.0</Version>
+        <PublicKeyToken>31bf3856ad364e35</PublicKeyToken>
+      </Reference>
+      <Reference Alias="Perf">
+        <ID>System.Performance.Library</ID>
+        <Version>7.0.8432.0</Version>
+        <PublicKeyToken>31bf3856ad364e35</PublicKeyToken>
+      </Reference>
+    </References>
+  </Manifest>
+  <TypeDefinitions>
+    <ModuleTypes>
+      <DataSourceModuleType ID="Windows.Monitoring.Extended.DataSource.PercentMemoryUsed" Accessibility="Public" Batching="false">
+        <Configuration>
+          <xsd:element minOccurs="1" name="PhysicalMemory" type="xsd:double" xmlns:xsd="http://www.w3.org/2001/XMLSchema" />
+          <xsd:element minOccurs="1" name="IntervalSeconds" type="xsd:integer" xmlns:xsd="http://www.w3.org/2001/XMLSchema" />
+        </Configuration>
+        <OverrideableParameters>
+          <OverrideableParameter ID="IntervalSeconds" Selector="$Config/IntervalSeconds$" ParameterType="int" />
+        </OverrideableParameters>
+        <ModuleImplementation Isolation="Any">
+          <Composite>
+            <MemberModules>
+              <DataSource ID="PerfDS" TypeID="Perf!System.Performance.DataProvider">
+                <CounterName>Available MBytes</CounterName>
+                <ObjectName>Memory</ObjectName>
+                <InstanceName />
+                <AllInstances>false</AllInstances>
+                <Frequency>$Config/IntervalSeconds$</Frequency>
+              </DataSource>
+              <ProbeAction ID="ScriptDS" TypeID="Windows!Microsoft.Windows.ScriptPropertyBagProbe">
+                <ScriptName>Microsoft.Windows.Server.OperatingSystem.PercentMemoryUsed.vbs</ScriptName>
+                <Arguments>$Data/Value$ $Config/PhysicalMemory$</Arguments>
+                <ScriptBody>
+                  'Copyright (c) Microsoft Corporation. All rights reserved.
+
+                  '*************************************************************************
+                  ' $ScriptName: "Microsoft.Windows.Server.Common"$
+                  '
+                  ' Purpose: To have one place for common stuff across various BaseOS VBScripts
+                  '
+                  ' $File: Microsoft.Windows.Server.Common.vbs$
+                  '*************************************************************************
+
+                  Option Explicit
+
+                  SetLocale("en-us")
+
+                  ' LogScripEvent Constants
+                  Const lsEventError                 = 1
+                  Const lsEventWarning               = 2
+                  Const lsEventInformation           = 3
+
+                  ' WMI Constants
+                  Const wbemCimtypeUseDefault        = 0   'Use Default Type CIM type - Custom
+                  Const wbemCimtypeSint16            = 2   'Signed 16-bit integer
+                  Const wbemCimtypeSint32            = 3   'Signed 32-bit integer
+                  Const wbemCimtypeReal32            = 4   '32-bit real number
+                  Const wbemCimtypeReal64            = 5   '64-bit real number
+                  Const wbemCimtypeString            = 8   'String
+                  Const wbemCimtypeBoolean           = 11  'Boolean value
+                  Const wbemCimtypeObject            = 13  'CIM object
+                  Const wbemCimtypeSint8             = 16  'Signed 8-bit integer
+                  Const wbemCimtypeUint8             = 17  'Unsigned 8-bit integer
+                  Const wbemCimtypeUint16            = 18  'Unsigned 16-bit integer
+                  Const wbemCimtypeUint32            = 19  'Unsigned 32-bit integer
+                  Const wbemCimtypeSint64            = 20  'Signed 64-bit integer
+                  Const wbemCimtypeUint64            = 21  'Unsigned 64-bit integer
+                  Const wbemCimtypeDatetime          = 101 'Date/time value
+                  Const wbemCimtypeReference         = 102 'Reference to a CIM object
+                  Const wbemCimtypeChar16            = 103 '16-bit character
+
+                  Const ErrAction_None               = 0
+                  Const ErrAction_Trace              = 1
+                  Const ErrAction_ThrowError         = 16
+                  Const ErrAction_Abort              = 32
+                  Const ErrAction_ThrowErrorAndAbort = 48
+
+                  Dim g_ErrorEventNumber, g_TraceEventNumber, g_DebugFlag
+                  g_ErrorEventNumber = 4001
+                  g_TraceEventNumber = 4002
+                  g_DebugFlag = False
+
+                  '---------------------------------------------------------------------------
+                  ' Returns WMI Instance requested. Tries to execute WMI query a N times.
+                  '---------------------------------------------------------------------------
+                  Function WMIGetInstanceExTryN(oWMI, ByVal sInstance, ByVal N)
+                  Dim oInstance, nInstanceCount
+                  Dim e, i
+                  Set e = New Error
+
+                  For i = 0 To i &lt; N
+                  On Error Resume Next
+                  Set oInstance = oWMI.InstancesOf(sInstance)
+                  e.Save
+                  On Error Goto 0
+                  If IsEmpty(oInstance) Or e.Number &lt;&gt; 0 Then
+                  If i = N - 1 Then
+                  ThrowScriptError "The class name '" &amp; sInstance &amp; "' returned no instances.  Please check to see if this is a valid WMI class name.", e
+                  End If
+                  Else
+                  On Error Resume Next
+                  nInstanceCount = oInstance.Count
+                  e.Save
+                  On Error Goto 0
+                  If e.Number &lt;&gt; 0 Then
+                  If i = N - 1 Then
+                  ThrowScriptError "The class name '" &amp; sInstance &amp; "' did not return any valid instances.  Please check to see if this is a valid WMI class name.", e
+                  End If
+                  Else
+                  Exit For
+                  End If
+                  End If
+                  WScript.Sleep(1000)
+                  Next
+
+                  Set WMIGetInstanceExTryN = oInstance
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Returns WMI Instance requested.
+                  '---------------------------------------------------------------------------
+                  Function WMIGetInstanceEx(oWMI, ByVal sInstance)
+                  Dim oInstance, nInstanceCount
+                  Dim e
+                  Set e = New Error
+
+                  On Error Resume Next
+                  Set oInstance = oWMI.InstancesOf(sInstance)
+                  e.Save
+                  On Error Goto 0
+                  If IsEmpty(oInstance) Or e.Number &lt;&gt; 0 Then
+                  ThrowScriptError "The class name '" &amp; sInstance &amp; "' returned no instances.  Please check to see if this is a valid WMI class name.", e
+                  End If
+
+                  'Determine if we queried a valid WMI class - Count will return 0 or empty
+                  On Error Resume Next
+                  nInstanceCount = oInstance.Count
+                  e.Save
+                  On Error Goto 0
+                  If e.Number &lt;&gt; 0 Then
+                  ThrowScriptError "The class name '" &amp; sInstance &amp; "' did not return any valid instances.  Please check to see if this is a valid WMI class name.", e
+                  End If
+
+                  Set WMIGetInstanceEx = oInstance
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Connect to WMI.
+                  '---------------------------------------------------------------------------
+                  Function WMIConnect(ByVal sNamespace)
+                  Dim oWMI
+                  Dim e
+                  Set e = New Error
+                  On Error Resume Next
+                  Set oWMI = GetObject(sNamespace)
+                  e.Save
+                  On Error Goto 0
+                  If IsEmpty(oWMI) Then
+                  ThrowScriptError "Unable to open WMI Namespace '" &amp; sNamespace &amp; "'. Check to see if the WMI service is enabled and running, and ensure this WMI namespace exists.", e
+                  End If
+                  Set WMIConnect = oWMI
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Returns WMI Instance requested.
+                  '---------------------------------------------------------------------------
+                  Function WMIGetInstance(ByVal sNamespace, ByVal sInstance)
+                  Dim oWMI, oInstance
+                  Set oWMI = WMIConnect(sNamespace)
+                  Set oInstance = WMIGetInstanceEx(oWMI, sInstance)
+                  Set WMIGetInstance = oInstance
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Returns WMI Instance requested.
+                  '---------------------------------------------------------------------------
+                  Function WMIGetInstanceNoAbort(ByVal sNamespace, ByVal sInstance)
+                  Dim oWMI, oInstance, nInstanceCount
+
+                  On Error Resume Next
+                  Set oWMI = GetObject(sNamespace)
+                  If Not IsEmpty(oWMI) Then
+                  Set oInstance = oWMI.InstancesOf(sInstance)
+                  If Not IsEmpty(oInstance) And Err.Number = 0 Then
+                  'Determine if we queried a valid WMI class - Count will return 0 or empty
+                  nInstanceCount = oInstance.Count
+                  If Err.Number = 0 Then
+                  Set WMIGetInstanceNoAbort = oInstance
+                  On Error Goto 0
+                  Exit Function
+                  End If
+                  End If
+                  End If
+
+                  On Error Goto 0
+                  Set WMIGetInstanceNoAbort = Nothing
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Executes the WMI query and returns the result set.
+                  '---------------------------------------------------------------------------
+                  Function WMIExecQuery(ByVal sNamespace, ByVal sQuery)
+                  Dim oWMI, oQuery, nInstanceCount
+                  Dim e
+                  Set e = New Error
+                  On Error Resume Next
+                  Set oWMI = GetObject(sNamespace)
+                  e.Save
+                  On Error Goto 0
+                  If IsEmpty(oWMI) Then
+                  ThrowScriptError "Unable to open WMI Namespace '" &amp; sNamespace &amp; "'.  Check to see if the WMI service is enabled and running, and ensure this WMI namespace exists.", e
+                  End If
+
+                  On Error Resume Next
+                  Set oQuery = oWMI.ExecQuery(sQuery)
+                  e.Save
+                  On Error Goto 0
+                  If IsEmpty(oQuery) Or e.Number &lt;&gt; 0 Then
+                  ThrowScriptError "The Query '" &amp; sQuery &amp; "' returned an invalid result set.  Please check to see if this is a valid WMI Query.", e
+                  End If
+
+                  'Determine if we queried a valid WMI class - Count will return 0 or empty
+                  On Error Resume Next
+                  nInstanceCount = oQuery.Count
+                  e.Save
+                  On Error Goto 0
+                  If e.Number &lt;&gt; 0 Then
+                  ThrowScriptError "The Query '" &amp; sQuery &amp; "' did not return any valid instances.  Please check to see if this is a valid WMI Query.", e
+                  End If
+
+                  Set WMIExecQuery = oQuery
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Executes the WMI query and returns the result set, no abort version.
+                  '---------------------------------------------------------------------------
+                  Function WMIExecQueryNoAbort(ByVal sNamespace, ByVal sQuery)
+                  Dim oWMI, oQuery
+                  Set oWMI = GetObject(sNamespace)
+                  Set oQuery = oWMI.ExecQuery(sQuery)
+                  Set WMIExecQueryNoAbort = oQuery
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Retrieves WMI property.
+                  '---------------------------------------------------------------------------
+                  Function GetWMIProperty(oWmi, sPropName, nCIMType, ErrAction)
+                  Dim sValue, oWmiProp, oError
+                  Set oError = New Error
+
+                  ' Check that object is valid.
+                  If Not IsValidObject(oWmi) Then
+                  If (ErrAction And ErrAction_ThrowError) = ErrAction_ThrowError Then _
+                  ThrowScriptErrorNoAbort "Accessing property on invalid WMI object.", oError
+                  If (ErrAction And ErrAction_Abort) = ErrAction_Abort Then _
+                  Quit()
+
+                  GetWMIProperty = ""
+                  Exit Function
+                  End If
+
+                  ' Get properties...
+                  On Error Resume Next
+                  Set oWmiProp = oWmi.Properties_.Item(sPropName)
+                  oError.Save
+                  If oError.Number &lt;&gt; 0 Then
+                  If (ErrAction And ErrAction_ThrowError) = ErrAction_ThrowError Then _
+                  ThrowScriptErrorNoAbort "An error occurred while accessing WMI property: '" &amp; sPropName &amp; "'.", oError
+                  If (ErrAction And ErrAction_Abort) = ErrAction_Abort Then _
+                  Quit()
+                  End If
+                  On Error Goto 0
+
+                  If IsValidObject(oWmiProp) Then
+                  sValue = oWmiProp.Value
+
+                  If IsNull(sValue) Then ' If value is null, return blank to avoid any issues
+                  GetWMIProperty = ""
+                  Else
+                  Select Case (oWmiProp.CIMType)
+                  Case wbemCimtypeString, wbemCimtypeSint16, wbemCimtypeSint32, wbemCimtypeReal32, wbemCimtypeReal64, wbemCimtypeSint8, wbemCimtypeUint8, wbemCimtypeUint16, wbemCimtypeUint32, wbemCimtypeSint64, wbemCimtypeUint64:
+                  If Not oWmiProp.IsArray Then
+                  GetWMIProperty = Trim(CStr(sValue))
+                  Else
+                  GetWMIProperty = Join(sValue, ", ")
+                  End If
+                  Case wbemCimtypeBoolean:
+                  If sValue = 1 Or UCase(sValue) = "TRUE" Then
+                  GetWMIProperty = "True"
+                  Else
+                  GetWMIProperty = "False"
+                  End If
+                  Case wbemCimtypeDatetime:
+                  Dim sTmpStrDate
+
+                  ' First attempt to convert the whole wmi date string
+                  sTmpStrDate = Mid(sValue, 5, 2) &amp; "/" &amp; _
+                  Mid(sValue, 7, 2) &amp; "/" &amp; _
+                  Left(sValue, 4) &amp; " " &amp; _
+                  Mid (sValue, 9, 2) &amp; ":" &amp; _
+                  Mid(sValue, 11, 2) &amp; ":" &amp; _
+                  Mid(sValue, 13, 2)
+                  If IsDate(sTmpStrDate) Then
+                  GetWMIProperty = CDate(sTmpStrDate)
+                  Else
+                  ' Second, attempt just to convert the YYYYMMDD
+                  sTmpStrDate = Mid(sValue, 5, 2) &amp; "/" &amp; _
+                  Mid(sValue, 7, 2) &amp; "/" &amp; _
+                  Left(sValue, 4)
+                  If IsDate(sTmpStrDate) Then
+                  GetWMIProperty = CDate(sTmpStrDate)
+                  Else
+                  ' Nothing works - return passed in string
+                  GetWMIProperty = sValue
+                  End If
+                  End If
+                  Case Else:
+                  GetWMIProperty = ""
+                  End Select
+                  End If
+                  Else
+                  If (ErrAction And ErrAction_ThrowError) = ErrAction_ThrowError Then _
+                  ThrowScriptErrorNoAbort "An error occurred while accessing WMI property: '" &amp; sPropName &amp; "'.", oError
+                  If (ErrAction And ErrAction_Abort) = ErrAction_Abort Then _
+                  Quit()
+
+                  GetWMIProperty = ""
+                  End If
+
+                  If (ErrAction And ErrAction_Trace) = ErrAction_Trace Then _
+                  WScript.Echo "  + " &amp; sPropName &amp; " :: '" &amp; GetWMIProperty &amp; "'"
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Class for error handling.
+                  '---------------------------------------------------------------------------
+                  Class Error
+                  Private m_lNumber
+                  Private m_sSource
+                  Private m_sDescription
+                  Private m_sHelpContext
+                  Private m_sHelpFile
+                  Public Sub Save()
+                  m_lNumber = Err.number
+                  m_sSource = Err.Source
+                  m_sDescription = Err.Description
+                  m_sHelpContext = Err.HelpContext
+                  m_sHelpFile = Err.helpfile
+                  End Sub
+                  Public Sub Raise()
+                  Err.Raise m_lNumber, m_sSource, m_sDescription, m_sHelpFile, m_sHelpContext
+                  End Sub
+                  Public Sub Clear()
+                  m_lNumber = 0
+                  m_sSource = ""
+                  m_sDescription = ""
+                  m_sHelpContext = ""
+                  m_sHelpFile = ""
+                  End Sub
+                  Public Default Property Get Number()
+                  Number = m_lNumber
+                  End Property
+                  Public Property Get Source()
+                  Source = m_sSource
+                  End Property
+                  Public Property Get Description()
+                  Description = m_sDescription
+                  End Property
+                  Public Property Get HelpContext()
+                  HelpContext = m_sHelpContext
+                  End Property
+                  Public Property Get HelpFile()
+                  HelpFile = m_sHelpFile
+                  End Property
+                  End Class
+
+                  '---------------------------------------------------------------------------
+                  ' Creates an event and sends it back to the mom server.
+                  '---------------------------------------------------------------------------
+                  Function ThrowScriptErrorNoAbort(ByVal sMessage, ByVal oErr)
+                  ' Retrieve the name of this (running) script
+                  Dim FSO, ScriptFileName
+                  Set FSO = CreateObject("Scripting.FileSystemObject")
+                  ScriptFileName = FSO.GetFile(WScript.ScriptFullName).Name
+                  Set FSO = Nothing
+
+                  If Not IsNull(oErr) Then _
+                  sMessage = sMessage &amp; ". " &amp; oErr.Description
+
+                  On Error Resume Next
+                  Dim oAPITemp
+                  Set oAPITemp = CreateObject("MOM.ScriptAPI")
+                  oAPITemp.LogScriptEvent ScriptFileName, g_ErrorEventNumber, lsEventError, sMessage
+                  On Error Goto 0
+
+                  WScript.Echo sMessage
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Creates an event and sends it back to the mom server.
+                  '---------------------------------------------------------------------------
+                  Function ThrowScriptError(Byval sMessage, ByVal oErr)
+                  On Error Resume Next
+                  ThrowScriptErrorNoAbort sMessage, oErr
+                  Quit()
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Creates automation objects and returns it.
+                  '---------------------------------------------------------------------------
+                  Function MomCreateObject(ByVal sProgramId)
+                  Dim oError
+                  Set oError = New Error
+
+                  On Error Resume Next
+                  Set MomCreateObject = CreateObject(sProgramId)
+                  oError.Save
+                  On Error Goto 0
+
+                  If oError.Number &lt;&gt; 0 Then
+                  ThrowScriptError "Unable to create automation object '" &amp; sProgramId &amp; "'", oError
+                  End If
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Quits the script.
+                  '---------------------------------------------------------------------------
+                  Function Quit()
+                  WScript.Quit()
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Checks whether oObject is valid.
+                  '---------------------------------------------------------------------------
+                  Function IsValidObject(ByVal oObject)
+                  IsValidObject = False
+                  If IsObject(oObject) Then
+                  If Not oObject Is Nothing Then
+                  IsValidObject = True
+                  End If
+                  End If
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Outputs arguments for debugging purposes
+                  '---------------------------------------------------------------------------
+                  Function TraceLogArguments
+                  Dim oArgs
+                  Set oArgs = WScript.Arguments
+                  Dim i, sArgs
+                  For i = 0 To oArgs.Count - 1
+                  sArgs = sArgs &amp; " {" &amp; oArgs(i) &amp; "}"
+                  Next
+                  TraceLogMessage "Arguments:" &amp; sArgs
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Verifies that number of arguments is correct
+                  '---------------------------------------------------------------------------
+                  Function VerifyNumberOfArguments(ByVal NumberOfArguments)
+                  Dim oArgs
+                  Set oArgs = WScript.Arguments
+                  If oArgs.Count &lt;&gt; NumberOfArguments Then
+                  Dim i, sArgs
+                  For i = 0 To oArgs.Count - 1
+                  sArgs = sArgs &amp; " {" &amp; oArgs(i) &amp; "}"
+                  Next
+                  ThrowScriptError "Invalid number of arguments (" &amp; oArgs.Count &amp; " instead of " &amp; NumberOfArguments &amp; "). Arguments:" &amp; sArgs, Null
+                  End If
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Outputs to file and echo for debugging purposes
+                  '---------------------------------------------------------------------------
+                  Function TraceLogMessage(ByVal sMessage)
+                  WScript.Echo sMessage
+
+                  If g_DebugFlag = True Then
+                  ' Retrieve the name of this (running) script
+                  Dim FSO, ScriptFileName
+                  Set FSO = CreateObject("Scripting.FileSystemObject")
+                  ScriptFileName = FSO.GetFile(WScript.ScriptFullName).Name
+                  Set FSO = Nothing
+
+                  On Error Resume Next
+                  Dim oAPITemp
+                  Set oAPITemp = MOMCreateObject("MOM.ScriptAPI")
+                  oAPITemp.LogScriptEvent ScriptFileName, g_TraceEventNumber, lsEventInformation, sMessage
+                  On Error Goto 0
+                  End If
+                  End Function
+
+                  '---------------------------------------------------------------------------
+                  ' Verifies the expression. If equals to False then generates an error and quits the script
+                  '   Usage:
+                  '     Verify Not WMISet Is Nothing, "WMISet is invalid!"
+                  '     Verify WMISet.Count = 1, "Invalid quantity of services with name 'Server' (qty = " &amp; WMISet.Count &amp; ")."
+                  '---------------------------------------------------------------------------
+                  Function Verify(ByVal bBool, ByVal sMessage)
+                  If bBool = False Then
+                  ThrowScriptError sMessage, Null
+                  End If
+                  End Function
+
+
+                  Function GetRegistryKeyValue(ByVal keyPath, ByVal key)
+                  Dim oReg, strKeyValue
+
+                  Set oReg = MOMCreateObject("WScript.Shell")
+                  On Error Resume Next
+
+                  strKeyValue = oReg.RegRead(keyPath &amp; key)
+                  If Err.Number &lt;&gt; 0 Then
+                  ThrowScriptError "An error occurred while reading the registry: '" &amp; keyPath &amp; key &amp; "'", Err.Description
+                  strKeyValue = ""
+                  End If
+
+                  ' resume error
+                  On Error Goto 0
+
+                  GetRegistryKeyValue = strKeyValue
+                  End Function
+                  'Copyright (c) Microsoft Corporation. All rights reserved.
+
+                  '*************************************************************************
+                  ' $ScriptName: "Microsoft.Windows.Server.OperatingSystem.PercentMemoryUsed"$
+                  '
+                  '
+                  ' $File: Microsoft.Windows.Server.OperatingSystem.PercentMemoryUsed.vbs$
+                  '*************************************************************************
+
+                  ' Parameters that should be passed to this script
+                  ' 0 Available Physical memory MBytes.
+                  ' 1 Total amount of Physical Memory in KBytes.
+
+                  Const sCounterName = "PercentMemoryUsed"
+                  Const sObjectName  = "Memory"
+
+                  Call Main()
+
+                  Sub Main
+
+                  VerifyNumberOfArguments(2)
+
+                  Dim oArgs, sErrorDescription
+                  Set oArgs = WScript.Arguments
+
+                  Dim nAvailableMBytes, nPhysicalMemoryKBytes, nPhysicalMemoryMBytes, oAPI, nResult, oBag
+
+                  nAvailableMBytes = oArgs(0)
+                  nPhysicalMemoryKBytes  = oArgs(1)
+                  nResult = 0
+                  sErrorDescription = "Invalid arguments are detected: " &amp; nAvailableMBytes &amp; " " &amp; nPhysicalMemoryKBytes
+
+                  If Not (IsNumeric(nAvailableMBytes) And IsNumeric(nPhysicalMemoryKBytes)) Then
+                  ThrowScriptError sErrorDescription, Null
+                  End If
+
+                  nPhysicalMemoryMBytes = CDbl(nPhysicalMemoryKBytes/1024)
+
+                  If (CDbl(nAvailableMBytes) &gt; 0) Then
+
+                  If Not (CDbl(nAvailableMBytes) &lt; CDbl(nPhysicalMemoryMBytes)) Then
+                  ThrowScriptError sErrorDescription, Null
+                  End If
+
+                  Set oAPI = MOMCreateObject("MOM.ScriptAPI")
+                  Set oBag = oAPI.CreateTypedPropertyBag(2)
+
+                  nResult = CDbl(100 - (nAvailableMBytes/(nPhysicalMemoryMBytes)*100))
+
+                  With oBag
+                  .AddValue "PerfCounter", sCounterName
+                  .AddValue "PerfValue", nResult
+                  End With
+
+                  oAPI.AddItem oBag
+
+                  oAPI.ReturnItems
+
+                  End If
+
+                  End Sub
+                </ScriptBody>
+                <TimeoutSeconds>300</TimeoutSeconds>
+              </ProbeAction>
+              <ConditionDetection ID="PerfMapper" TypeID="Perf!System.Performance.DataGenericMapper">
+                <ObjectName>Memory</ObjectName>
+                <CounterName>$Data/Property[@Name='PerfCounter']$</CounterName>
+                <InstanceName />
+                <Value>$Data/Property[@Name='PerfValue']$</Value>
+              </ConditionDetection>
+              <ConditionDetection ID="IsNullCD" TypeID="System!System.ExpressionFilter">
+                <Expression>
+                  <SimpleExpression>
+                    <ValueExpression>
+                      <XPathQuery Type="String">/DataItem/IsNull</XPathQuery>
+                    </ValueExpression>
+                    <Operator>Equal</Operator>
+                    <ValueExpression>
+                      <Value Type="String">false</Value>
+                    </ValueExpression>
+                  </SimpleExpression>
+                </Expression>
+              </ConditionDetection>
+            </MemberModules>
+            <Composition>
+              <Node ID="PerfMapper">
+                <Node ID="ScriptDS">
+                  <Node ID="IsNullCD">
+                    <Node ID="PerfDS" />
+                  </Node>
+                </Node>
+              </Node>
+            </Composition>
+          </Composite>
+        </ModuleImplementation>
+        <OutputType>Perf!System.Performance.Data</OutputType>
+      </DataSourceModuleType>
+    </ModuleTypes>
+    <MonitorTypes>
+      <UnitMonitorType ID="Windows.Monitoring.Extended.MonitorType.PercentMemoryUsed" Accessibility="Public">
+        <MonitorTypeStates>
+          <MonitorTypeState ID="MTS_Over" />
+          <MonitorTypeState ID="MTS_Under" />
+        </MonitorTypeStates>
+        <Configuration>
+          <xsd:element minOccurs="1" name="PhysicalMemory" type="xsd:double" xmlns:xsd="http://www.w3.org/2001/XMLSchema" />
+          <xsd:element minOccurs="1" name="IntervalSeconds" type="xsd:integer" xmlns:xsd="http://www.w3.org/2001/XMLSchema" />
+          <xsd:element minOccurs="1" name="Threshold" type="xsd:double" xmlns:xsd="http://www.w3.org/2001/XMLSchema" />
+          <xsd:element minOccurs="1" name="MatchCount" type="xsd:integer" xmlns:xsd="http://www.w3.org/2001/XMLSchema" />
+        </Configuration>
+        <OverrideableParameters>
+          <OverrideableParameter ID="IntervalSeconds" Selector="$Config/IntervalSeconds$" ParameterType="int" />
+          <OverrideableParameter ID="Threshold" Selector="$Config/Threshold$" ParameterType="double" />
+          <OverrideableParameter ID="MatchCount" Selector="$Config/MatchCount$" ParameterType="int" />
+        </OverrideableParameters>
+        <MonitorImplementation>
+          <MemberModules>
+            <DataSource ID="Script" TypeID="Windows.Monitoring.Extended.DataSource.PercentMemoryUsed">
+              <PhysicalMemory>$Config/PhysicalMemory$</PhysicalMemory>
+              <IntervalSeconds>$Config/IntervalSeconds$</IntervalSeconds>
+            </DataSource>
+            <ConditionDetection ID="CD_Under" TypeID="System!System.ExpressionFilter">
+              <Expression>
+                <SimpleExpression>
+                  <ValueExpression>
+                    <XPathQuery Type="Double">Value</XPathQuery>
+                  </ValueExpression>
+                  <Operator>Less</Operator>
+                  <ValueExpression>
+                    <Value Type="Double">$Config/Threshold$</Value>
+                  </ValueExpression>
+                </SimpleExpression>
+              </Expression>
+            </ConditionDetection>
+            <ConditionDetection ID="CD_Over" TypeID="System!System.ExpressionFilter">
+              <Expression>
+                <SimpleExpression>
+                  <ValueExpression>
+                    <XPathQuery Type="Double">Value</XPathQuery>
+                  </ValueExpression>
+                  <Operator>GreaterEqual</Operator>
+                  <ValueExpression>
+                    <Value Type="Double">$Config/Threshold$</Value>
+                  </ValueExpression>
+                </SimpleExpression>
+              </Expression>
+              <SuppressionSettings>
+                <MatchCount>$Config/MatchCount$</MatchCount>
+              </SuppressionSettings>
+            </ConditionDetection>
+          </MemberModules>
+          <RegularDetections>
+            <RegularDetection MonitorTypeStateID="MTS_Under">
+              <Node ID="CD_Under">
+                <Node ID="Script" />
+              </Node>
+            </RegularDetection>
+            <RegularDetection MonitorTypeStateID="MTS_Over">
+              <Node ID="CD_Over">
+                <Node ID="Script" />
+              </Node>
+            </RegularDetection>
+          </RegularDetections>
+        </MonitorImplementation>
+      </UnitMonitorType>
+    </MonitorTypes>
+  </TypeDefinitions>
+  <Monitoring>
+    <Monitors>
+      <UnitMonitor ID="Windows.Monitoring.Extended.Monitor.PercentMemoryUsed" Accessibility="Public" Enabled="true" ParentMonitorID="Health!System.Health.PerformanceState" Priority="Normal" Target="Windows!Microsoft.Windows.Server.OperatingSystem" TypeID="Windows.Monitoring.Extended.MonitorType.PercentMemoryUsed">
+        <Category>PerformanceHealth</Category>
+        <AlertSettings AlertMessage="Windows.Monitoring.Extended.AlertMessage.PercentMemoryUsed">
+          <AlertOnState>Error</AlertOnState>
+          <AutoResolve>true</AutoResolve>
+          <AlertPriority>Normal</AlertPriority>
+          <AlertSeverity>Error</AlertSeverity>
+          <AlertParameters>
+            <AlertParameter1>$Data/Context/Value$</AlertParameter1>
+          </AlertParameters>
+        </AlertSettings>
+        <OperationalStates>
+          <OperationalState ID="OpState_Healthy" HealthState="Success" MonitorTypeStateID="MTS_Under" />
+          <OperationalState ID="OpState_Unhealty" HealthState="Error" MonitorTypeStateID="MTS_Over" />
+        </OperationalStates>
+        <Configuration>
+          <PhysicalMemory>$Target/Property[Type="Windows!Microsoft.Windows.OperatingSystem"]/PhysicalMemory$</PhysicalMemory>
+          <IntervalSeconds>900</IntervalSeconds>
+          <Threshold>90</Threshold>
+          <MatchCount>2</MatchCount>
+        </Configuration>
+      </UnitMonitor>
+    </Monitors>
+  </Monitoring>
+  <Presentation>
+    <StringResources>
+      <StringResource ID="Windows.Monitoring.Extended.AlertMessage.PercentMemoryUsed" />
+    </StringResources>
+  </Presentation>
+  <LanguagePacks>
+    <LanguagePack ID="ENU" IsDefault="true">
+      <DisplayStrings>
+        <DisplayString ElementID="Windows.Monitoring.Extended.Monitor.PercentMemoryUsed">
+          <Name>Windows Percent Memory Used Monitor</Name>
+        </DisplayString>
+        <DisplayString ElementID="Windows.Monitoring.Extended.AlertMessage.PercentMemoryUsed">
+          <Name>Windows Memory Over Threshold</Name>
+          <Description>Windows memory is currently at 0: {0}%</Description>
+        </DisplayString>
+      </DisplayStrings>
+      <KnowledgeArticles></KnowledgeArticles>
+    </LanguagePack>
+  </LanguagePacks>
+</ManagementPack>
