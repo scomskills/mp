@@ -1,0 +1,601 @@
+﻿<ManagementPackFragment SchemaVersion="2.0" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <TypeDefinitions>
+    <MonitorTypes>
+      <UnitMonitorType ID="Windows.Monitoring.Extended.MonitorType.LogicalDiskFreeSpace" Accessibility="Internal">
+        <MonitorTypeStates>
+          <MonitorTypeState ID="UnderWarningThresholds" NoDetection="false" />
+          <MonitorTypeState ID="OverWarningUnderErrorThresholds" NoDetection="false" />
+          <MonitorTypeState ID="OverErrorThresholds" NoDetection="false" />
+        </MonitorTypeStates>
+        <Configuration>
+          <xsd:element minOccurs="1" name="ComputerName" type="xsd:string" />
+          <xsd:element minOccurs="1" name="DiskLabel" type="xsd:string" />
+          <xsd:element minOccurs="1" name="IntervalSeconds" type="xsd:integer" />
+          <xsd:element minOccurs="1" name="SystemDriveWarningMBytesThreshold" type="xsd:double" />
+          <xsd:element minOccurs="1" name="SystemDriveWarningPercentThreshold" type="xsd:double" />
+          <xsd:element minOccurs="1" name="SystemDriveErrorMBytesThreshold" type="xsd:double" />
+          <xsd:element minOccurs="1" name="SystemDriveErrorPercentThreshold" type="xsd:double" />
+          <xsd:element minOccurs="1" name="NonSystemDriveWarningMBytesThreshold" type="xsd:double" />
+          <xsd:element minOccurs="1" name="NonSystemDriveWarningPercentThreshold" type="xsd:double" />
+          <xsd:element minOccurs="1" name="NonSystemDriveErrorMBytesThreshold" type="xsd:double" />
+          <xsd:element minOccurs="1" name="NonSystemDriveErrorPercentThreshold" type="xsd:double" />
+        </Configuration>
+        <OverrideableParameters>
+          <OverrideableParameter ID="IntervalSeconds" Selector="$Config/IntervalSeconds$" ParameterType="int" />
+          <OverrideableParameter ID="SystemDriveWarningMBytesThreshold" Selector="$Config/SystemDriveWarningMBytesThreshold$" ParameterType="double" />
+          <OverrideableParameter ID="SystemDriveWarningPercentThreshold" Selector="$Config/SystemDriveWarningPercentThreshold$" ParameterType="double" />
+          <OverrideableParameter ID="SystemDriveErrorMBytesThreshold" Selector="$Config/SystemDriveErrorMBytesThreshold$" ParameterType="double" />
+          <OverrideableParameter ID="SystemDriveErrorPercentThreshold" Selector="$Config/SystemDriveErrorPercentThreshold$" ParameterType="double" />
+          <OverrideableParameter ID="NonSystemDriveWarningMBytesThreshold" Selector="$Config/NonSystemDriveWarningMBytesThreshold$" ParameterType="double" />
+          <OverrideableParameter ID="NonSystemDriveWarningPercentThreshold" Selector="$Config/NonSystemDriveWarningPercentThreshold$" ParameterType="double" />
+          <OverrideableParameter ID="NonSystemDriveErrorMBytesThreshold" Selector="$Config/NonSystemDriveErrorMBytesThreshold$" ParameterType="double" />
+          <OverrideableParameter ID="NonSystemDriveErrorPercentThreshold" Selector="$Config/NonSystemDriveErrorPercentThreshold$" ParameterType="double" />
+        </OverrideableParameters>
+        <MonitorImplementation>
+          <MemberModules>
+            <DataSource ID="DS" TypeID="Windows.Monitoring.Extended.DataSource.LogicalDiskFreeSpace">
+              <ComputerName>$Config/ComputerName$</ComputerName>
+              <DiskLabel>$Config/DiskLabel$</DiskLabel>
+              <IntervalSeconds>$Config/IntervalSeconds$</IntervalSeconds>
+            </DataSource>
+            <ConditionDetection ID="HealthyCD" TypeID="System!System.ExpressionFilter">
+              <Expression>
+                <!--Begin drive type check-->
+                <Or>
+                  <Expression>
+                    <!--Begin non-system drive evaluation-->
+                    <And>
+                      <Expression>
+                        <SimpleExpression>
+                          <ValueExpression>
+                            <XPathQuery Type="String">Property[@Name='IsSystemDrive']</XPathQuery>
+                          </ValueExpression>
+                          <Operator>NotEqual</Operator>
+                          <ValueExpression>
+                            <Value Type="String">true</Value>
+                          </ValueExpression>
+                        </SimpleExpression>
+                      </Expression>
+                      <Expression>
+                        <!--Begin threshold configuration for non-system drive-->
+                        <Or>
+                          <Expression>
+                            <!--Use thresholds from local configuration file-->
+                            <And>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="String">Property[@Name='User-Defined']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Equal</Operator>
+                                  <ValueExpression>
+                                    <Value Type="String">true</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='User-Defined-State']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Equal</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">0</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                            </And>
+                          </Expression>
+                          <Expression>
+                            <!--Use thresholds from monitor configuration.-->
+                            <And>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="String">Property[@Name='User-Defined']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>NotEqual</Operator>
+                                  <ValueExpression>
+                                    <Value Type="String">true</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='Pct Free']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Greater</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">$Config/SystemDriveWarningPercentThreshold$</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                            </And>
+                          </Expression>
+                        </Or>
+                      </Expression>
+                    </And>
+                  </Expression>
+                  <Expression>
+                    <!--Begin system drive evaluation-->
+                    <And>
+                      <Expression>
+                        <SimpleExpression>
+                          <ValueExpression>
+                            <XPathQuery Type="String">Property[@Name='IsSystemDrive']</XPathQuery>
+                          </ValueExpression>
+                          <Operator>Equal</Operator>
+                          <ValueExpression>
+                            <Value Type="String">true</Value>
+                          </ValueExpression>
+                        </SimpleExpression>
+                      </Expression>
+                      <Expression>
+                        <!--Begin threshold configuration for system drive-->
+                        <Or>
+                          <Expression>
+                            <!--Use thresholds from local configuration file-->
+                            <And>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="String">Property[@Name='User-Defined']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Equal</Operator>
+                                  <ValueExpression>
+                                    <Value Type="String">true</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='User-Defined-State']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Equal</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">0</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                            </And>
+                          </Expression>
+                          <Expression>
+                            <!--Use thresholds from monitor configuration-->
+                            <And>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="String">Property[@Name='User-Defined']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>NotEqual</Operator>
+                                  <ValueExpression>
+                                    <Value Type="String">true</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='Pct Free']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Greater</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">$Config/SystemDriveWarningPercentThreshold$</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                            </And>
+                          </Expression>
+                        </Or>
+                      </Expression>
+                    </And>
+                  </Expression>
+                </Or>
+              </Expression>
+            </ConditionDetection>
+            <ConditionDetection ID="WarningCD" TypeID="System!System.ExpressionFilter">
+              <Expression>
+                <!--Begin drive type check-->
+                <Or>
+                  <Expression>
+                    <!--Begin non-system drive evaluation-->
+                    <And>
+                      <Expression>
+                        <SimpleExpression>
+                          <ValueExpression>
+                            <XPathQuery Type="String">Property[@Name='IsSystemDrive']</XPathQuery>
+                          </ValueExpression>
+                          <Operator>NotEqual</Operator>
+                          <ValueExpression>
+                            <Value Type="String">true</Value>
+                          </ValueExpression>
+                        </SimpleExpression>
+                      </Expression>
+                      <Expression>
+                        <!--Begin threshold configuration for non-system drive-->
+                        <Or>
+                          <Expression>
+                            <!--Use thresholds from local configuration file-->
+                            <And>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="String">Property[@Name='User-Defined']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Equal</Operator>
+                                  <ValueExpression>
+                                    <Value Type="String">true</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='User-Defined-State']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Equal</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">1</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                            </And>
+                          </Expression>
+                          <Expression>
+                            <!--Use thresholds from monitor configuration.-->
+                            <And>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="String">Property[@Name='User-Defined']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>NotEqual</Operator>
+                                  <ValueExpression>
+                                    <Value Type="String">true</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='Pct Free']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>LessEqual</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">$Config/SystemDriveWarningPercentThreshold$</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='Pct Free']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Greater</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">$Config/SystemDriveErrorPercentThreshold$</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                            </And>
+                          </Expression>
+                        </Or>
+                      </Expression>
+                    </And>
+                  </Expression>
+                  <Expression>
+                    <!--Begin system drive evaluation-->
+                    <And>
+                      <Expression>
+                        <SimpleExpression>
+                          <ValueExpression>
+                            <XPathQuery Type="String">Property[@Name='IsSystemDrive']</XPathQuery>
+                          </ValueExpression>
+                          <Operator>Equal</Operator>
+                          <ValueExpression>
+                            <Value Type="String">true</Value>
+                          </ValueExpression>
+                        </SimpleExpression>
+                      </Expression>
+                      <Expression>
+                        <!--Begin threshold configuration for system drive-->
+                        <Or>
+                          <Expression>
+                            <!--Use thresholds from local configuration file-->
+                            <And>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="String">Property[@Name='User-Defined']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Equal</Operator>
+                                  <ValueExpression>
+                                    <Value Type="String">true</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='User-Defined-State']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Equal</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">1</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                            </And>
+                          </Expression>
+                          <Expression>
+                            <!--Use thresholds from monitor configuration-->
+                            <And>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="String">Property[@Name='User-Defined']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>NotEqual</Operator>
+                                  <ValueExpression>
+                                    <Value Type="String">true</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='Pct Free']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>LessEqual</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">$Config/SystemDriveWarningPercentThreshold$</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='Pct Free']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Greater</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">$Config/SystemDriveErrorPercentThreshold$</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                            </And>
+                          </Expression>
+                        </Or>
+                      </Expression>
+                    </And>
+                  </Expression>
+                </Or>
+              </Expression>
+            </ConditionDetection>
+            <ConditionDetection ID="ErrorCD" TypeID="System!System.ExpressionFilter">
+              <Expression>
+                <!--Begin drive type check-->
+                <Or>
+                  <Expression>
+                    <!--Begin non-system drive evaluation-->
+                    <And>
+                      <Expression>
+                        <SimpleExpression>
+                          <ValueExpression>
+                            <XPathQuery Type="String">Property[@Name='IsSystemDrive']</XPathQuery>
+                          </ValueExpression>
+                          <Operator>NotEqual</Operator>
+                          <ValueExpression>
+                            <Value Type="String">true</Value>
+                          </ValueExpression>
+                        </SimpleExpression>
+                      </Expression>
+                      <Expression>
+                        <!--Begin threshold configuration for non-system drive-->
+                        <Or>
+                          <Expression>
+                            <!--Use thresholds from local configuration file-->
+                            <And>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="String">Property[@Name='User-Defined']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Equal</Operator>
+                                  <ValueExpression>
+                                    <Value Type="String">true</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='User-Defined-State']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Equal</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">2</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                            </And>
+                          </Expression>
+                          <Expression>
+                            <!--Use thresholds from monitor configuration.-->
+                            <And>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="String">Property[@Name='User-Defined']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>NotEqual</Operator>
+                                  <ValueExpression>
+                                    <Value Type="String">true</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='Pct Free']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>LessEqual</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">$Config/SystemDriveErrorPercentThreshold$</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                            </And>
+                          </Expression>
+                        </Or>
+                      </Expression>
+                    </And>
+                  </Expression>
+                  <Expression>
+                    <!--Begin system drive evaluation-->
+                    <And>
+                      <Expression>
+                        <SimpleExpression>
+                          <ValueExpression>
+                            <XPathQuery Type="String">Property[@Name='IsSystemDrive']</XPathQuery>
+                          </ValueExpression>
+                          <Operator>Equal</Operator>
+                          <ValueExpression>
+                            <Value Type="String">true</Value>
+                          </ValueExpression>
+                        </SimpleExpression>
+                      </Expression>
+                      <Expression>
+                        <!--Begin threshold configuration for system drive-->
+                        <Or>
+                          <Expression>
+                            <!--Use thresholds from local configuration file-->
+                            <And>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="String">Property[@Name='User-Defined']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Equal</Operator>
+                                  <ValueExpression>
+                                    <Value Type="String">true</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='User-Defined-State']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>Equal</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">2</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                            </And>
+                          </Expression>
+                          <Expression>
+                            <!--Use thresholds from monitor configuration-->
+                            <And>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="String">Property[@Name='User-Defined']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>NotEqual</Operator>
+                                  <ValueExpression>
+                                    <Value Type="String">true</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                              <Expression>
+                                <SimpleExpression>
+                                  <ValueExpression>
+                                    <XPathQuery Type="Integer">Property[@Name='Pct Free']</XPathQuery>
+                                  </ValueExpression>
+                                  <Operator>LessEqual</Operator>
+                                  <ValueExpression>
+                                    <Value Type="Integer">$Config/SystemDriveErrorPercentThreshold$</Value>
+                                  </ValueExpression>
+                                </SimpleExpression>
+                              </Expression>
+                            </And>
+                          </Expression>
+                        </Or>
+                      </Expression>
+                    </And>
+                  </Expression>
+                </Or>
+              </Expression>
+            </ConditionDetection>
+          </MemberModules>
+          <RegularDetections>
+            <RegularDetection MonitorTypeStateID="UnderWarningThresholds">
+              <Node ID="HealthyCD">
+                <Node ID="DS" />
+              </Node>
+            </RegularDetection>
+            <RegularDetection MonitorTypeStateID="OverWarningUnderErrorThresholds">
+              <Node ID="WarningCD">
+                <Node ID="DS" />
+              </Node>
+            </RegularDetection>
+            <RegularDetection MonitorTypeStateID="OverErrorThresholds">
+              <Node ID="ErrorCD">
+                <Node ID="DS" />
+              </Node>
+            </RegularDetection>
+          </RegularDetections>
+        </MonitorImplementation>
+      </UnitMonitorType>
+    </MonitorTypes>
+  </TypeDefinitions>
+  <LanguagePacks>
+    <LanguagePack ID="ENU" IsDefault="true">
+      <DisplayStrings>
+        <DisplayString ElementID="Windows.Monitoring.Extended.MonitorType.LogicalDiskFreeSpace">
+          <Name>Windows Server Logical Disk Free Space Monitor Type</Name>
+        </DisplayString>
+        <DisplayString ElementID="Windows.Monitoring.Extended.MonitorType.LogicalDiskFreeSpace" SubElementID="IntervalSeconds">
+          <Name>IntervalSeconds</Name>
+          <Description>Interval in seconds</Description>
+        </DisplayString>
+        <DisplayString ElementID="Windows.Monitoring.Extended.MonitorType.LogicalDiskFreeSpace" SubElementID="NonSystemDriveErrorMBytesThreshold">
+          <Name>Error Mbytes Threshold for Non-System Drives</Name>
+          <Description>Error Mbytes Threshold for Non-System Drives</Description>
+        </DisplayString>
+        <DisplayString ElementID="Windows.Monitoring.Extended.MonitorType.LogicalDiskFreeSpace" SubElementID="NonSystemDriveErrorPercentThreshold">
+          <Name>Error % Threshold for Non-System Drives</Name>
+          <Description>Error % Threshold for Non-System Drives</Description>
+        </DisplayString>
+        <DisplayString ElementID="Windows.Monitoring.Extended.MonitorType.LogicalDiskFreeSpace" SubElementID="NonSystemDriveWarningMBytesThreshold">
+          <Name>Non System Drive Warning MBytes Threshold</Name>
+          <Description>Warning threshold in MBytes for the non system drives.</Description>
+        </DisplayString>
+        <DisplayString ElementID="Windows.Monitoring.Extended.MonitorType.LogicalDiskFreeSpace" SubElementID="NonSystemDriveWarningPercentThreshold">
+          <Name>Warning % Threshold for Non-System Drives</Name>
+          <Description>Warning % Threshold for Non-System Drives</Description>
+        </DisplayString>
+        <DisplayString ElementID="Windows.Monitoring.Extended.MonitorType.LogicalDiskFreeSpace" SubElementID="SystemDriveErrorMBytesThreshold">
+          <Name>Error MBytes Threshold for System Drives</Name>
+          <Description>Error MBytes Threshold for System Drives</Description>
+        </DisplayString>
+        <DisplayString ElementID="Windows.Monitoring.Extended.MonitorType.LogicalDiskFreeSpace" SubElementID="SystemDriveErrorPercentThreshold">
+          <Name>Error %Threshold for System Drives</Name>
+          <Description>Error % Threshold for System Drives</Description>
+        </DisplayString>
+        <DisplayString ElementID="Windows.Monitoring.Extended.MonitorType.LogicalDiskFreeSpace" SubElementID="SystemDriveWarningMBytesThreshold">
+          <Name>Warning MBytes Threshold for System Drives</Name>
+          <Description>Warning MBytes Threshold for System Drives</Description>
+        </DisplayString>
+        <DisplayString ElementID="Windows.Monitoring.Extended.MonitorType.LogicalDiskFreeSpace" SubElementID="SystemDriveWarningPercentThreshold">
+          <Name>Warning % Threshold for System Drives</Name>
+          <Description>Warning % Threshold for System Drives</Description>
+        </DisplayString>
+      </DisplayStrings>
+    </LanguagePack>
+  </LanguagePacks>
+</ManagementPackFragment>

@@ -1,0 +1,801 @@
+﻿<ManagementPackFragment SchemaVersion="2.0" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <TypeDefinitions>
+    <ModuleTypes>
+      <!--
+      This data source extends the out-of-box data source to include user-defined threshold configurations stored in a csv file at the root of each volume.
+      If the file exists and contains configuration data, those thresholds will supercede those defined in the default monitor configuration. The user-defined
+      threshold can be one of % or MB; both types of thresholds are not supported in this version. If both types are specified, the last row will be used as
+      effective configuration.
+      -->
+      <DataSourceModuleType ID="Windows.Monitoring.Extended.DataSource.LogicalDiskFreeSpace" Accessibility="Internal" Batching="false">
+        <Configuration>
+          <xsd:element minOccurs="1" name="ComputerName" type="xsd:string" />
+          <xsd:element minOccurs="1" name="DiskLabel" type="xsd:string" />
+          <xsd:element minOccurs="0" maxOccurs="1" name="IntervalSeconds" type="xsd:integer" />
+        </Configuration>
+        <OverrideableParameters>
+          <OverrideableParameter ID="Interval" Selector="$Config/IntervalSeconds$" ParameterType="int" />
+        </OverrideableParameters>
+        <ModuleImplementation Isolation="Any">
+          <Composite>
+            <MemberModules>
+              <DataSource ID="DS" TypeID="Windows!Microsoft.Windows.TimedScript.PropertyBagProvider">
+                <IntervalSeconds>$Config/IntervalSeconds$</IntervalSeconds>
+                <SyncTime />
+                <ScriptName>Windows.Monitoring.Extended.LogicalDiskFreeSpace.vbs</ScriptName>
+                <Arguments>$Config/ComputerName$ $Config/IntervalSeconds$ false</Arguments>
+                <ScriptBody>
+                  <![CDATA[
+'*************************************************************************
+' $ScriptName: "Microsoft.Windows.Server.Common"$
+'
+' Purpose: To have one place for common stuff across various BaseOS VBScripts
+'
+' $File: Microsoft.Windows.Server.Common.vbs$
+' 
+' Arguments
+' TargetComputer   = oArgs(0)
+' IntervalSeconds   = CDbl(oArgs(1))
+' g_DebugFlag      = CBool(oArgs(2))
+' 
+' Modified by Jonathan Almquist (jonathan@scomskills.com) to support cookdown and extended local monitor configuration.
+'*************************************************************************
+
+Option Explicit
+
+SetLocale("en-us")
+
+' LogScripEvent Constants
+Const lsEventError                 = 1
+Const lsEventWarning               = 2
+Const lsEventInformation           = 3
+
+' WMI Constants
+Const wbemCimtypeUseDefault        = 0   'Use Default Type CIM type - Custom
+Const wbemCimtypeSint16            = 2   'Signed 16-bit integer
+Const wbemCimtypeSint32            = 3   'Signed 32-bit integer
+Const wbemCimtypeReal32            = 4   '32-bit real number
+Const wbemCimtypeReal64            = 5   '64-bit real number
+Const wbemCimtypeString            = 8   'String
+Const wbemCimtypeBoolean           = 11  'Boolean value
+Const wbemCimtypeObject            = 13  'CIM object
+Const wbemCimtypeSint8             = 16  'Signed 8-bit integer
+Const wbemCimtypeUint8             = 17  'Unsigned 8-bit integer
+Const wbemCimtypeUint16            = 18  'Unsigned 16-bit integer
+Const wbemCimtypeUint32            = 19  'Unsigned 32-bit integer
+Const wbemCimtypeSint64            = 20  'Signed 64-bit integer
+Const wbemCimtypeUint64            = 21  'Unsigned 64-bit integer
+Const wbemCimtypeDatetime          = 101 'Date/time value
+Const wbemCimtypeReference         = 102 'Reference to a CIM object
+Const wbemCimtypeChar16            = 103 '16-bit character
+
+Const ErrAction_None               = 0
+Const ErrAction_Trace              = 1
+Const ErrAction_ThrowError         = 16
+Const ErrAction_Abort              = 32
+Const ErrAction_ThrowErrorAndAbort = 48
+
+Dim g_ErrorEventNumber, g_TraceEventNumber, g_DebugFlag
+g_ErrorEventNumber = 4001
+g_TraceEventNumber = 4002
+g_DebugFlag = False
+
+'---------------------------------------------------------------------------
+' Returns WMI Instance requested. Tries to execute WMI query a N times.
+'---------------------------------------------------------------------------
+Function WMIGetInstanceExTryN(oWMI, ByVal sInstance, ByVal N)
+Dim oInstance, nInstanceCount
+Dim e, i
+Set e = New Error
+
+For i = 0 To i < N
+On Error Resume Next
+Set oInstance = oWMI.InstancesOf(sInstance)
+e.Save
+On Error Goto 0
+If IsEmpty(oInstance) Or e.Number <> 0 Then
+If i = N - 1 Then
+ThrowScriptError "The class name '" & sInstance & "' returned no instances.  Please check to see if this is a valid WMI class name.", e
+End If
+Else
+On Error Resume Next
+nInstanceCount = oInstance.Count
+e.Save
+On Error Goto 0
+If e.Number <> 0 Then
+If i = N - 1 Then
+ThrowScriptError "The class name '" & sInstance & "' did not return any valid instances.  Please check to see if this is a valid WMI class name.", e
+End If
+Else
+Exit For
+End If
+End If
+WScript.Sleep(1000)
+Next
+
+Set WMIGetInstanceExTryN = oInstance
+End Function
+
+'---------------------------------------------------------------------------
+' Returns WMI Instance requested.
+'---------------------------------------------------------------------------
+Function WMIGetInstanceEx(oWMI, ByVal sInstance)
+Dim oInstance, nInstanceCount
+Dim e
+Set e = New Error
+
+On Error Resume Next
+Set oInstance = oWMI.InstancesOf(sInstance)
+e.Save
+On Error Goto 0
+If IsEmpty(oInstance) Or e.Number <> 0 Then
+ThrowScriptError "The class name '" & sInstance & "' returned no instances.  Please check to see if this is a valid WMI class name.", e
+End If
+
+'Determine if we queried a valid WMI class - Count will return 0 or empty
+On Error Resume Next
+nInstanceCount = oInstance.Count
+e.Save
+On Error Goto 0
+If e.Number <> 0 Then
+ThrowScriptError "The class name '" & sInstance & "' did not return any valid instances.  Please check to see if this is a valid WMI class name.", e
+End If
+
+Set WMIGetInstanceEx = oInstance
+End Function
+
+'---------------------------------------------------------------------------
+' Connect to WMI.
+'---------------------------------------------------------------------------
+Function WMIConnect(ByVal sNamespace)
+Dim oWMI
+Dim e
+Set e = New Error
+On Error Resume Next
+Set oWMI = GetObject(sNamespace)
+e.Save
+On Error Goto 0
+If IsEmpty(oWMI) Then
+ThrowScriptError "Unable to open WMI Namespace '" & sNamespace & "'. Check to see if the WMI service is enabled and running, and ensure this WMI namespace exists.", e
+End If
+Set WMIConnect = oWMI
+End Function
+
+'---------------------------------------------------------------------------
+' Returns WMI Instance requested.
+'---------------------------------------------------------------------------
+Function WMIGetInstance(ByVal sNamespace, ByVal sInstance)
+Dim oWMI, oInstance
+Set oWMI = WMIConnect(sNamespace)
+Set oInstance = WMIGetInstanceEx(oWMI, sInstance)
+Set WMIGetInstance = oInstance
+End Function
+
+'---------------------------------------------------------------------------
+' Returns WMI Instance requested.
+'---------------------------------------------------------------------------
+Function WMIGetInstanceNoAbort(ByVal sNamespace, ByVal sInstance)
+Dim oWMI, oInstance, nInstanceCount
+
+On Error Resume Next
+Set oWMI = GetObject(sNamespace)
+If Not IsEmpty(oWMI) Then
+Set oInstance = oWMI.InstancesOf(sInstance)
+If Not IsEmpty(oInstance) And Err.Number = 0 Then
+'Determine if we queried a valid WMI class - Count will return 0 or empty
+nInstanceCount = oInstance.Count
+If Err.Number = 0 Then
+Set WMIGetInstanceNoAbort = oInstance
+On Error Goto 0
+Exit Function
+End If
+End If
+End If
+
+On Error Goto 0
+Set WMIGetInstanceNoAbort = Nothing
+End Function
+
+'---------------------------------------------------------------------------
+' Executes the WMI query and returns the result set.
+'---------------------------------------------------------------------------
+Function WMIExecQuery(ByVal sNamespace, ByVal sQuery)
+Dim oWMI, oQuery, nInstanceCount
+Dim e
+Set e = New Error
+On Error Resume Next
+Set oWMI = GetObject(sNamespace)
+e.Save
+On Error Goto 0
+If IsEmpty(oWMI) Then
+ThrowScriptError "Unable to open WMI Namespace '" & sNamespace & "'.  Check to see if the WMI service is enabled and running, and ensure this WMI namespace exists.", e
+End If
+
+On Error Resume Next
+Set oQuery = oWMI.ExecQuery(sQuery)
+e.Save
+On Error Goto 0
+If IsEmpty(oQuery) Or e.Number <> 0 Then
+ThrowScriptError "The Query '" & sQuery & "' returned an invalid result set.  Please check to see if this is a valid WMI Query.", e
+End If
+
+'Determine if we queried a valid WMI class - Count will return 0 or empty
+On Error Resume Next
+nInstanceCount = oQuery.Count
+e.Save
+On Error Goto 0
+If e.Number <> 0 Then
+ThrowScriptError "The Query '" & sQuery & "' did not return any valid instances.  Please check to see if this is a valid WMI Query.", e
+End If
+
+Set WMIExecQuery = oQuery
+End Function
+
+'---------------------------------------------------------------------------
+' Executes the WMI query and returns the result set, no abort version.
+'---------------------------------------------------------------------------
+Function WMIExecQueryNoAbort(ByVal sNamespace, ByVal sQuery)
+Dim oWMI, oQuery
+Set oWMI = GetObject(sNamespace)
+Set oQuery = oWMI.ExecQuery(sQuery)
+Set WMIExecQueryNoAbort = oQuery
+End Function
+
+'---------------------------------------------------------------------------
+' Retrieves WMI property.
+'---------------------------------------------------------------------------
+Function GetWMIProperty(oWmi, sPropName, nCIMType, ErrAction)
+Dim sValue, oWmiProp, oError
+Set oError = New Error
+
+' Check that object is valid.
+If Not IsValidObject(oWmi) Then
+If (ErrAction And ErrAction_ThrowError) = ErrAction_ThrowError Then _
+ThrowScriptErrorNoAbort "Accessing property on invalid WMI object.", oError
+If (ErrAction And ErrAction_Abort) = ErrAction_Abort Then _
+Quit()
+
+GetWMIProperty = ""
+Exit Function
+End If
+
+' Get properties...
+On Error Resume Next
+Set oWmiProp = oWmi.Properties_.Item(sPropName)
+oError.Save
+If oError.Number <> 0 Then
+If (ErrAction And ErrAction_ThrowError) = ErrAction_ThrowError Then _
+ThrowScriptErrorNoAbort "An error occurred while accessing WMI property: '" & sPropName & "'.", oError
+If (ErrAction And ErrAction_Abort) = ErrAction_Abort Then _
+Quit()
+End If
+On Error Goto 0
+
+If IsValidObject(oWmiProp) Then
+sValue = oWmiProp.Value
+
+If IsNull(sValue) Then ' If value is null, return blank to avoid any issues
+GetWMIProperty = ""
+Else
+Select Case (oWmiProp.CIMType)
+Case wbemCimtypeString, wbemCimtypeSint16, wbemCimtypeSint32, wbemCimtypeReal32, wbemCimtypeReal64, wbemCimtypeSint8, wbemCimtypeUint8, wbemCimtypeUint16, wbemCimtypeUint32, wbemCimtypeSint64, wbemCimtypeUint64:
+If Not oWmiProp.IsArray Then
+GetWMIProperty = Trim(CStr(sValue))
+Else
+GetWMIProperty = Join(sValue, ", ")
+End If
+Case wbemCimtypeBoolean:
+If sValue = 1 Or UCase(sValue) = "TRUE" Then
+GetWMIProperty = "True"
+Else
+GetWMIProperty = "False"
+End If
+Case wbemCimtypeDatetime:
+Dim sTmpStrDate
+
+' First attempt to convert the whole wmi date string
+sTmpStrDate = Mid(sValue, 5, 2) & "/" & _
+Mid(sValue, 7, 2) & "/" & _
+Left(sValue, 4) & " " & _
+Mid (sValue, 9, 2) & ":" & _
+Mid(sValue, 11, 2) & ":" & _
+Mid(sValue, 13, 2)
+If IsDate(sTmpStrDate) Then
+GetWMIProperty = CDate(sTmpStrDate)
+Else
+' Second, attempt just to convert the YYYYMMDD
+sTmpStrDate = Mid(sValue, 5, 2) & "/" & _
+Mid(sValue, 7, 2) & "/" & _
+Left(sValue, 4)
+If IsDate(sTmpStrDate) Then
+GetWMIProperty = CDate(sTmpStrDate)
+Else
+' Nothing works - return passed in string
+GetWMIProperty = sValue
+End If
+End If
+Case Else:
+GetWMIProperty = ""
+End Select
+End If
+Else
+If (ErrAction And ErrAction_ThrowError) = ErrAction_ThrowError Then _
+ThrowScriptErrorNoAbort "An error occurred while accessing WMI property: '" & sPropName & "'.", oError
+If (ErrAction And ErrAction_Abort) = ErrAction_Abort Then _
+Quit()
+
+GetWMIProperty = ""
+End If
+
+If (ErrAction And ErrAction_Trace) = ErrAction_Trace Then _
+WScript.Echo "  + " & sPropName & " :: '" & GetWMIProperty & "'"
+End Function
+
+'---------------------------------------------------------------------------
+' Class for error handling.
+'---------------------------------------------------------------------------
+Class Error
+Private m_lNumber
+Private m_sSource
+Private m_sDescription
+Private m_sHelpContext
+Private m_sHelpFile
+Public Sub Save()
+m_lNumber = Err.number
+m_sSource = Err.Source
+m_sDescription = Err.Description
+m_sHelpContext = Err.HelpContext
+m_sHelpFile = Err.helpfile
+End Sub
+Public Sub Raise()
+Err.Raise m_lNumber, m_sSource, m_sDescription, m_sHelpFile, m_sHelpContext
+End Sub
+Public Sub Clear()
+m_lNumber = 0
+m_sSource = ""
+m_sDescription = ""
+m_sHelpContext = ""
+m_sHelpFile = ""
+End Sub
+Public Default Property Get Number()
+Number = m_lNumber
+End Property
+Public Property Get Source()
+Source = m_sSource
+End Property
+Public Property Get Description()
+Description = m_sDescription
+End Property
+Public Property Get HelpContext()
+HelpContext = m_sHelpContext
+End Property
+Public Property Get HelpFile()
+HelpFile = m_sHelpFile
+End Property
+End Class
+
+'---------------------------------------------------------------------------
+' Creates an event and sends it back to the mom server.
+'---------------------------------------------------------------------------
+Function ThrowScriptErrorNoAbort(ByVal sMessage, ByVal oErr)
+' Retrieve the name of this (running) script
+Dim FSO, ScriptFileName
+Set FSO = CreateObject("Scripting.FileSystemObject")
+ScriptFileName = FSO.GetFile(WScript.ScriptFullName).Name
+Set FSO = Nothing
+
+If Not IsNull(oErr) Then _
+sMessage = sMessage & ". " & oErr.Description
+
+On Error Resume Next
+Dim oAPITemp
+Set oAPITemp = CreateObject("MOM.ScriptAPI")
+oAPITemp.LogScriptEvent ScriptFileName, g_ErrorEventNumber, lsEventError, sMessage
+On Error Goto 0
+
+WScript.Echo sMessage
+End Function
+
+'---------------------------------------------------------------------------
+' Creates an event and sends it back to the mom server.
+'---------------------------------------------------------------------------
+Function ThrowScriptError(Byval sMessage, ByVal oErr)
+On Error Resume Next
+ThrowScriptErrorNoAbort sMessage, oErr
+Quit()
+End Function
+
+'---------------------------------------------------------------------------
+' Creates automation objects and returns it.
+'---------------------------------------------------------------------------
+Function MomCreateObject(ByVal sProgramId)
+Dim oError
+Set oError = New Error
+
+On Error Resume Next
+Set MomCreateObject = CreateObject(sProgramId)
+oError.Save
+On Error Goto 0
+
+If oError.Number <> 0 Then
+ThrowScriptError "Unable to create automation object '" & sProgramId & "'", oError
+End If
+End Function
+
+'---------------------------------------------------------------------------
+' Quits the script.
+'---------------------------------------------------------------------------
+Function Quit()
+WScript.Quit()
+End Function
+
+'---------------------------------------------------------------------------
+' Checks whether oObject is valid.
+'---------------------------------------------------------------------------
+Function IsValidObject(ByVal oObject)
+IsValidObject = False
+If IsObject(oObject) Then
+If Not oObject Is Nothing Then
+IsValidObject = True
+End If
+End If
+End Function
+
+'---------------------------------------------------------------------------
+' Outputs arguments for debugging purposes
+'---------------------------------------------------------------------------
+Function TraceLogArguments
+Dim oArgs
+Set oArgs = WScript.Arguments
+Dim i, sArgs
+For i = 0 To oArgs.Count - 1
+sArgs = sArgs & " {" & oArgs(i) & "}"
+Next
+TraceLogMessage "Arguments:" & sArgs
+End Function
+
+'---------------------------------------------------------------------------
+' Verifies that number of arguments is correct
+'---------------------------------------------------------------------------
+Function VerifyNumberOfArguments(ByVal NumberOfArguments)
+Dim oArgs
+Set oArgs = WScript.Arguments
+If oArgs.Count <> NumberOfArguments Then
+Dim i, sArgs
+For i = 0 To oArgs.Count - 1
+sArgs = sArgs & " {" & oArgs(i) & "}"
+Next
+ThrowScriptError "Invalid number of arguments (" & oArgs.Count & " instead of " & NumberOfArguments & "). Arguments:" & sArgs, Null
+End If
+End Function
+
+'---------------------------------------------------------------------------
+' Outputs to file and echo for debugging purposes
+'---------------------------------------------------------------------------
+Function TraceLogMessage(ByVal sMessage)
+' WScript.Echo sMessage
+
+If g_DebugFlag = True Then
+' Retrieve the name of this (running) script
+Dim FSO, ScriptFileName
+Set FSO = CreateObject("Scripting.FileSystemObject")
+ScriptFileName = FSO.GetFile(WScript.ScriptFullName).Name
+Set FSO = Nothing
+
+On Error Resume Next
+Dim oAPITemp
+Set oAPITemp = MOMCreateObject("MOM.ScriptAPI")
+oAPITemp.LogScriptEvent ScriptFileName, g_TraceEventNumber, lsEventInformation, sMessage
+On Error Goto 0
+End If
+End Function
+
+'---------------------------------------------------------------------------
+' Verifies the expression. If equals to False then generates an error and quits the script
+'   Usage:
+'     Verify Not WMISet Is Nothing, "WMISet is invalid!"
+'     Verify WMISet.Count = 1, "Invalid quantity of services with name 'Server' (qty = " & WMISet.Count & ")."
+'---------------------------------------------------------------------------
+Function Verify(ByVal bBool, ByVal sMessage)
+If bBool = False Then
+ThrowScriptError sMessage, Null
+End If
+End Function
+
+
+Function GetRegistryKeyValue(ByVal keyPath, ByVal key)
+Dim oReg, strKeyValue
+
+Set oReg = MOMCreateObject("WScript.Shell")
+On Error Resume Next
+
+strKeyValue = oReg.RegRead(keyPath & key)
+If Err.Number <> 0 Then
+ThrowScriptError "An error occurred while reading the registry: '" & keyPath & key & "'", Err.Description
+strKeyValue = ""
+End If
+
+' resume error
+On Error Goto 0
+
+GetRegistryKeyValue = strKeyValue
+End Function
+
+Const BYTES_IN_MB = 1048576 '=2^20
+
+Const DriveHealthyState            = 0
+Const DriveWarningState            = 1
+Const DriveErrorState              = 2
+
+Call Main
+
+Sub Main()
+
+VerifyNumberOfArguments(3)
+
+Dim oArgs
+Set oArgs = WScript.Arguments
+Dim TargetComputer, IntervalSeconds, g_DebugFlag
+TargetComputer   = oArgs(0)
+IntervalSeconds  = CDbl(oArgs(1))
+g_DebugFlag      = CBool(oArgs(2))
+
+TraceLogArguments
+
+Dim oAPI, oBag
+Set oAPI = MOMCreateObject("MOM.ScriptAPI")
+
+Call oAPI.LogScriptEvent("Windows.Monitoring.Extended.LogicalDiskFreeSpace.vbs",100,0,"Script Started")
+
+Dim IsVolumeInfoSupported, SystemDrive, bIsSystemDrive
+IsVolumeInfoSupported = Is_Win32_Volume_Supported(TargetComputer)
+SystemDrive = Get_System_Drive(TargetComputer)
+
+Dim oWmiDiskSet, oWmiDisk, bBagIsNotEmpty
+
+bBagIsNotEmpty = "false"
+
+If IsVolumeInfoSupported Then
+Set oWmiDiskSet = WMIGetInstance("winmgmts:\\" + TargetComputer & "\root\cimv2", "Win32_Volume")
+Else
+Set oWmiDiskSet = WMIExecQuery("winmgmts:\\" + TargetComputer & "\root\cimv2", "select * from Win32_LogicalDisk where (DriveType=3 or DriveType=6) and FileSystem != null")
+End If
+
+For Each oWmiDisk in oWmiDiskSet
+If oWmiDisk.DriveType = 3 Then
+Dim sDriveLetter, nFreeSpace, nMaxSize, nPctFree, nMBFree
+
+nFreeSpace = oWmiDisk.FreeSpace
+If IsNull(nFreeSpace) Then _
+nFreeSpace = 0
+
+If IsVolumeInfoSupported Then
+sDriveLetter = oWmiDisk.DriveLetter
+nMaxSize = oWmiDisk.Capacity
+If IsNull(sDriveLetter) Then
+sDriveLetter  = oWmiDisk.Name
+sDriveLetter = Left(sDriveLetter, Len(sDriveLetter)-1)
+End If
+Else
+sDriveLetter = oWmiDisk.DeviceId
+nMaxSize = oWmiDisk.Size
+End If
+
+'-----------------------------------------------Jonathan Almquist added functionality to check local csv file for user-defined threshold configuration---begin
+Dim fs,objTextFile,objTextFileProperties,sMessage
+Set fs=CreateObject("Scripting.FileSystemObject")
+Dim arrStr
+
+Dim sUserDefined, UserDefinedType, sModified
+Dim UserDefinedWarningMB, UserDefinedErrorMB, UserDefinedWarningPct, UserDefinedErrorPct
+
+sModified = "false"
+
+If fs.FileExists(sDriveLetter & "\scom_disk_monitoring.csv") Then
+Set objTextFile = fs.OpenTextFile(sDriveLetter & "\scom_disk_monitoring.csv")
+Set objTextFileProperties = fs.GetFile(sDriveLetter & "\scom_disk_monitoring.csv")
+
+If DateDiff("s",objTextFileProperties.DateLastModified,Now()) < CDbl(IntervalSeconds) Then
+sModified = "true"
+Else
+sModified = "false"
+End If
+
+Do While NOT objTextFile.AtEndOfStream
+arrStr = split(objTextFile.ReadLine,",")
+UserDefinedType = arrStr(0)
+If ubound(arrStr) <> 2 Then
+sUserDefined = "Incorrect configuration file. Using SCOM thresholds."
+ElseIf UserDefinedType = "mb" Then
+UserDefinedWarningMB     = CDbl(arrStr(1))
+UserDefinedErrorMB       = CDbl(arrStr(2))
+sUserDefined     = "true"
+ElseIf UserDefinedType = "%" Then
+UserDefinedWarningPct    = CDbl(arrStr(1))
+UserDefinedErrorPct      = CDbl(arrStr(2))
+sUserDefined     = "true"
+End If
+Loop
+
+objTextFile.Close
+Set objTextFile = Nothing
+Set fs = Nothing
+Else sUserDefined = "false"
+End If
+'-----------------------------------------------Jonathan Almquist added functionality to check local csv file for user-defined threshold configuration---end
+
+Set oBag = oAPI.CreatePropertyBag()
+
+' If nMaxSize is null or 0 then drive is not formatted - do not return property bag for it.
+If Not IsNull(nMaxSize) And nMaxSize > 0 Then
+nPctFree = Round(nFreeSpace / nMaxSize * 100, 0)
+nMBFree = Round(nFreeSpace / BYTES_IN_MB, 0)
+If sDriveLetter = SystemDrive Then
+bIsSystemDrive = "true"
+oBag.AddValue "IsSystemDrive", bIsSystemDrive
+Else
+bIsSystemDrive = "false"
+oBag.AddValue "IsSystemDrive", bIsSystemDrive
+End If
+
+bBagIsNotEmpty = "true"
+
+'---------------Jonathan Almquist need to perform user-defined state evaluation now and return property bag------begin
+Dim UserDefinedState, UserDefinedMessage
+
+If (sUserDefined = "true") Then
+If UserDefinedType = "mb" Then
+If (nMBFree > UserDefinedErrorMB) and (nMBFree <= UserDefinedWarningMB) Then
+UserDefinedState = "1"
+ElseIf (nMBFree < UserDefinedErrorMB) Then
+UserDefinedState = "2"
+Else UserDefinedState = "0"
+End If
+ElseIf UserDefinedType = "%" Then
+If (nPctFree > UserDefinedErrorPct) and (nPctFree <= UserDefinedWarningPct) Then
+UserDefinedState = "1"
+ElseIf (nPctFree < UserDefinedErrorPct) Then
+UserDefinedState = "2"
+Else UserDefinedState = "0"
+End If
+End If
+End If
+'---------------Jonathan Almquist need to perform user-defined state evaluation now and return property bag------end
+
+
+
+oBag.AddValue "IsNotEmpty", bBagIsNotEmpty
+oBag.AddValue "DiskLabel", sDriveLetter
+oBag.AddValue "Mb Free", CDbl(nMBFree)
+oBag.AddValue "Pct Free", CDbl(nPctFree)
+oBag.AddValue "User-Defined", sUserDefined
+oBag.AddValue "User-Defined-Type", UserDefinedType
+oBag.AddValue "User-Defined-WarningMB", UserDefinedWarningMB
+oBag.AddValue "User-Defined-ErrorMB", UserDefinedErrorMB
+oBag.AddValue "User-Defined-WarningPct", UserDefinedWarningPct
+oBag.AddValue "User-Defined-ErrorPct", UserDefinedErrorPct
+oBag.AddValue "User-Defined-State", UserDefinedState
+If UserDefinedType = "mb" Then
+UserDefinedMessage = "Configuration: Warning less than " & UserDefinedWarningMB & UserDefinedType & ", Critical less than " & UserDefinedErrorMB & UserDefinedType
+ElseIf UserDefinedType = "%" Then
+UserDefinedMessage = "Configuration: Warning less than " & UserDefinedWarningPct & UserDefinedType & ", Critical less than " & UserDefinedErrorPct & UserDefinedType
+End If
+If sModified = "true" Then Call oAPI.LogScriptEvent("Microsoft.Windows.Server.FreeSpace_Config_" & sDriveLetter,100,0,"Free space threshold configuration for " & sDriveLetter & " had been changed. " & UserDefinedMessage)
+oBag.AddValue "User-Defined-Message", UserDefinedMessage
+oBag.AddValue "Modified", sModified
+oAPI.AddItem oBag
+
+sMessage = "Drive: " & sDriveLetter
+'Call oAPI.LogScriptEvent("Windows.Monitoring.Extended.LogicalDiskFreeSpace.vbs",100,0,sMessage)
+
+End If
+End If
+Next
+
+if Not CBool(bBagIsNotEmpty) Then
+Set oBag = oAPI.CreatePropertyBag()
+oBag.AddValue "IsNotEmpty", bBagIsNotEmpty
+oAPI.AddItem oBag
+End If
+
+oAPI.ReturnItems
+
+'Call oAPI.LogScriptEvent("Windows.Monitoring.Extended.LogicalDiskFreeSpace.vbs",100,0,"Script Ended")
+
+End Sub
+
+Function GetDriveHealthState(ByVal bIsSystem, ByVal dSysWarnMB, ByVal dSysWarnPct, ByVal dSysErrorMB, ByVal dSysErrorPct, ByVal dNonSysWarnMB, ByVal dNonSysWarnPct, ByVal dNonSysErrorMB, byVal dNonSysErrorPct, ByVal dPctFree, ByVal dMBFree)
+Dim fResult
+
+fResult = DriveHealthyState
+
+If (bIsSystem) Then
+If (dMBFree <= dSysErrorMB) and (dPctFree <= dSysErrorPct) Then
+fResult = DriveErrorState
+ElseIf (dMBFree =< dSysWarnMB) and (dPctFree =< dSysWarnPct) Then
+fResult = DriveWarningState
+End If
+Else
+If (dMBFree <= dNonSysErrorMB) and (dPctFree <= dNonSysErrorPct) Then
+fResult = DriveErrorState
+ElseIf (dMBFree =< dNonSysWarnMB) and (dPctFree =< dNonSysWarnPct) Then
+fResult = DriveWarningState
+End If
+End If
+
+GetDriveHealthState = fResult
+
+End Function
+
+Function Is_Win32_Volume_Supported(ByRef TargetComputer)
+Dim objWMISet, objWMIOS, blnRet
+blnRet = False
+Set objWMISet = WMIGetInstance("winmgmts:\\" & TargetComputer & "\root\cimv2", "Win32_OperatingSystem")
+For Each objWMIOS in objWMISet
+If CLng(objWMIOS.BuildNumber) >= 3624 Then blnRet = True
+Next
+Is_Win32_Volume_Supported = blnRet
+End Function
+
+Function Get_System_Drive(ByRef TargetComputer)
+Dim objWMISet, objWMIOS
+Get_System_Drive = ""
+Set objWMISet = WMIGetInstance("winmgmts:\\" & TargetComputer & "\root\cimv2", "Win32_OperatingSystem")
+For Each objWMIOS in objWMISet
+Get_System_Drive = Left(objWMIOS.SystemDirectory, 2)
+Next
+End Function
+                  ]]>
+                </ScriptBody>
+                <TimeoutSeconds>300</TimeoutSeconds>
+              </DataSource>
+              <ConditionDetection ID="EmptyCD" TypeID="System!System.ExpressionFilter">
+                <Expression>
+                  <SimpleExpression>
+                    <ValueExpression>
+                      <XPathQuery Type="Boolean">Property[@Name='IsNotEmpty']</XPathQuery>
+                    </ValueExpression>
+                    <Operator>Equal</Operator>
+                    <ValueExpression>
+                      <Value Type="Boolean">true</Value>
+                    </ValueExpression>
+                  </SimpleExpression>
+                </Expression>
+              </ConditionDetection>
+              <ConditionDetection ID="InstanceFilter" TypeID="System!System.ExpressionFilter">
+                <Expression>
+                  <SimpleExpression>
+                    <ValueExpression>
+                      <XPathQuery Type="String">Property[@Name='DiskLabel']</XPathQuery>
+                    </ValueExpression>
+                    <Operator>Equal</Operator>
+                    <ValueExpression>
+                      <Value Type="String">$Config/DiskLabel$</Value>
+                    </ValueExpression>
+                  </SimpleExpression>
+                </Expression>
+              </ConditionDetection>
+            </MemberModules>
+            <Composition>
+              <Node ID="InstanceFilter">
+                <Node ID="EmptyCD">
+                  <Node ID="DS" />
+                </Node>
+              </Node>
+            </Composition>
+          </Composite>
+        </ModuleImplementation>
+        <OutputType>System!System.BaseData</OutputType>
+      </DataSourceModuleType>
+    </ModuleTypes>
+  </TypeDefinitions>
+  <LanguagePacks>
+    <LanguagePack ID="ENU" IsDefault="true">
+      <DisplayStrings>
+        <DisplayString ElementID="Windows.Monitoring.Extended.DataSource.LogicalDiskFreeSpace">
+          <Name>Windows Server Logical Disk Free Space Data Source</Name>
+        </DisplayString>
+      </DisplayStrings>
+    </LanguagePack>
+  </LanguagePacks>
+</ManagementPackFragment>

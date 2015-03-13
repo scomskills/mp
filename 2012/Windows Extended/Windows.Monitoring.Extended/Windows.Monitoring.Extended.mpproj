@@ -14,11 +14,11 @@
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
     <OutputPath>bin\Debug\</OutputPath>
-    <GenerateSealed>false</GenerateSealed>
-    <Company>MyCompany</Company>
-    <Copyright>Copyright (c) MyCompany. All rights reserved.</Copyright>
-    <DelaySigning>false</DelaySigning>
-    <AssemblyOriginatorKeyFile />
+    <GenerateSealed>True</GenerateSealed>
+    <Company>Scomskills</Company>
+    <Copyright>Copyright (c) Scomskills. All rights reserved.</Copyright>
+    <DelaySigning>False</DelaySigning>
+    <AssemblyOriginatorKeyFile>D:\PairKey.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
     <DebugSymbols>false</DebugSymbols>
@@ -38,10 +38,23 @@
       <Alias>Windows</Alias>
       <PackageToBundle>false</PackageToBundle>
     </ManagementPackReference>
-    <ManagementPackReference Include="Microsoft.Windows.Server.2008.Monitoring">
-      <HintPath>C:\jonalm\Management Packs\Reference\Microsoft.Windows.Server.2008.Monitoring.mp</HintPath>
-      <Alias>MWS2M</Alias>
+    <ManagementPackReference Include="Microsoft.Windows.Server.2003">
+      <HintPath>D:\Management Packs\Reference\Microsoft.Windows.Server.2003.mp</HintPath>
+      <Alias>Windows2003</Alias>
       <MinVersion>6.0.6989.0</MinVersion>
+      <PackageToBundle>False</PackageToBundle>
+    </ManagementPackReference>
+    <ManagementPackReference Include="Microsoft.Windows.Server.2008.Monitoring">
+      <HintPath>D:\Management Packs\Reference\Microsoft.Windows.Server.2008.Monitoring.mp</HintPath>
+      <Alias>Windows2008M</Alias>
+      <MinVersion>6.0.6989.0</MinVersion>
+      <PackageToBundle>False</PackageToBundle>
+    </ManagementPackReference>
+    <ManagementPackReference Include="Microsoft.Windows.Server.2012.Monitoring">
+      <HintPath>D:\Management Packs\Reference\Microsoft.Windows.Server.2012.Monitoring.mp</HintPath>
+      <Alias>Windows2012M</Alias>
+      <MinVersion>6.0.6989.0</MinVersion>
+      <PackageToBundle>False</PackageToBundle>
     </ManagementPackReference>
     <ManagementPackReference Include="System.Health.Library">
       <Alias>Health</Alias>
@@ -72,10 +85,22 @@
     <Folder Include="Type Library\Monitor Types" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Display Name.mpx">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Health Model\Monitors\Unit Monitors\Logical Disk Free Space.mpx">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Health Model\Monitors\Unit Monitors\Percent Memory Used.mpx">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Type Library\Module Types\Data Sources\Logical Disk Free Space.mpx">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Type Library\Module Types\Data Sources\Percent Memory Used.mpx">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Type Library\Monitor Types\Logical Disk Free Space.mpx">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Type Library\Monitor Types\Percent Memory Used.mpx">
