@@ -3,7 +3,7 @@
   <Manifest>
     <Identity>
       <ID>Windows.Monitoring.Extended</ID>
-      <Version>1.0.0.35</Version>
+      <Version>1.0.0.36</Version>
     </Identity>
     <Name>Windows.Monitoring.Extended</Name>
     <References>
@@ -2181,7 +2181,7 @@ End Function
         </DisplayString>
         <DisplayString ElementID="Windows.Monitoring.Extended.AlertMessage.PercentMemoryUsed">
           <Name>Windows Memory Over Threshold</Name>
-          <Description>Windows memory is currently at 0: {0}%</Description>
+          <Description>Windows memory is currently at {0}%</Description>
         </DisplayString>
         <DisplayString ElementID="Windows.Monitoring.Extended.DataSource.LogicalDiskFreeSpace">
           <Name>Windows Server Logical Disk Free Space Data Source</Name>
