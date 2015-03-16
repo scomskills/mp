@@ -3,7 +3,7 @@
   <Manifest>
     <Identity>
       <ID>Windows.Monitoring.Extended</ID>
-      <Version>1.0.0.36</Version>
+      <Version>1.0.0.37</Version>
     </Identity>
     <Name>Windows.Monitoring.Extended</Name>
     <References>
@@ -2147,7 +2147,7 @@ End Function
           <Description>
             The disk {0} on computer {1} is running out of disk space.
 
-            The disk had {2}Mb ({3}%) free space at the time of this alert.
+            The disk had {2}mb ({3}%) free space at the time of this alert.
 
             User-defined thresholds: {4}
 
